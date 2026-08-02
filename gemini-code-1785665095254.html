@@ -288,12 +288,12 @@
     </div>
 
     <!-- MODAL KONFIRMASI HAPUS (z-index 1000) -->
-    <div id="modalConfirmDelete" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[1000] flex items-center justify-center p-4 hidden">
+    <div id="modalConfirmDelete" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle" aria-hidden="true" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[1000] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 text-center">
             <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto text-xl">
                 <i class="fa-solid fa-trash-can"></i>
             </div>
-            <h3 class="text-lg font-bold text-slate-800">Hapus Catatan Poin?</h3>
+            <h3 id="deleteModalTitle" class="text-lg font-bold text-slate-800">Hapus Catatan Poin?</h3>
             <p class="text-sm text-slate-500">Tindakan ini akan menghapus catatan poin siswa terpilih. Yakin ingin melanjutkan?</p>
             <div class="flex gap-3 pt-2">
                 <button onclick="closeModalDelete()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition">
@@ -307,11 +307,11 @@
     </div>
 
     <!-- MODAL SURAT TEGURAN PDF (z-index 1000) -->
-    <div id="modalCetakSurat" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[1000] flex items-center justify-center p-4 hidden">
+    <div id="modalCetakSurat" role="dialog" aria-modal="true" aria-labelledby="suratModalTitle" aria-hidden="true" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[1000] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4">
             <div class="flex justify-between items-center border-b pb-3">
-                <h3 class="text-lg font-bold text-slate-800">Cetak Laporan / Surat Teguran</h3>
-                <button onclick="closeModalSurat()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+                <h3 id="suratModalTitle" class="text-lg font-bold text-slate-800">Cetak Laporan / Surat Teguran</h3>
+                <button onclick="closeModalSurat()" class="text-slate-400 hover:text-slate-600" aria-label="Tutup modal surat teguran"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <div class="space-y-3">
                 <p class="text-sm text-slate-600"><span class="font-semibold">Nama Siswa:</span> <span id="suratNamaSiswa">-</span></p>
@@ -345,10 +345,18 @@
         let activeUserGuru = "";
         let deleteTargetId = null;
         let activeSelectedSiswaSurat = null;
+        let siswaLabelToId = {};
 
         // INIT APPLICATION
         document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("inputTanggal").valueAsDate = new Date();
+            document.getElementById("inputSiswa").addEventListener("input", syncSelectedSiswa);
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                    closeModalDelete();
+                    closeModalSurat();
+                }
+            });
             loadInitialDataFromGAS();
         });
 
@@ -366,7 +374,11 @@
             const icon = type === "error" ? "fa-circle-xmark" : "fa-circle-check";
 
             toast.className = `${bgClass} px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 text-sm font-medium transition-all transform duration-300 pointer-events-auto`;
-            toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+            const iconEl = document.createElement("i");
+            iconEl.className = `fa-solid ${icon}`;
+            const textEl = document.createElement("span");
+            textEl.textContent = message;
+            toast.append(iconEl, textEl);
             
             container.appendChild(toast);
             setTimeout(() => {
@@ -385,11 +397,18 @@
             const bodyData = JSON.stringify({ action, ...payload });
             const response = await fetch(APP_SCRIPT_URL, {
                 method: "POST",
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                headers: { "Content-Type": "application/json;charset=utf-8" },
                 body: bodyData
             });
 
-            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(`Network error: ${response.status}`);
+            }
+
+            const result = await response.json().catch(() => {
+                throw new Error("Invalid JSON from server");
+            });
+
             if (!result.success) {
                 throw new Error(result.message || "Terjadi kesalahan di server backend.");
             }
@@ -421,10 +440,20 @@
         // --- LOGIN MODULE ---
         function initLoginDropdown() {
             const select = document.getElementById("selectGuruLogin");
-            select.innerHTML = '<option value="">-- Pilih Nama Guru --</option>';
+            select.innerHTML = "";
+            const placeholderOption = document.createElement("option");
+            placeholderOption.value = "";
+            placeholderOption.textContent = "-- Pilih Nama Guru --";
+            select.appendChild(placeholderOption);
+
+            const fragment = document.createDocumentFragment();
             listGuru.forEach(g => {
-                select.innerHTML += `<option value="${g.nama_guru}">${g.nama_guru}</option>`;
+                const option = document.createElement("option");
+                option.value = g.nama_guru;
+                option.textContent = g.nama_guru;
+                fragment.appendChild(option);
             });
+            select.appendChild(fragment);
 
             document.getElementById("loginForm").onsubmit = (e) => {
                 e.preventDefault();
@@ -458,6 +487,7 @@
             const datalistSiswa = document.getElementById("datalistSiswa");
             selectedSiswaId = null;
             inputSiswa.value = "";
+            siswaLabelToId = {};
             datalistSiswa.innerHTML = "";
 
             if (!k) {
@@ -469,9 +499,16 @@
             const filtered = listSiswa.filter(s => String(s.kelas).toUpperCase() === String(k).toUpperCase());
             inputSiswa.disabled = false;
             inputSiswa.placeholder = "Ketik nama murid lalu pilih dari daftar";
+            const fragment = document.createDocumentFragment();
             filtered.forEach(s => {
-                datalistSiswa.innerHTML += `<option value="${s.nama_siswa} (${s.nisn})" data-id-siswa="${s.id_siswa}"></option>`;
+                const label = `${s.nama_siswa} (${s.nisn})`;
+                siswaLabelToId[label] = s.id_siswa;
+                const option = document.createElement("option");
+                option.value = label;
+                option.dataset.idSiswa = s.id_siswa;
+                fragment.appendChild(option);
             });
+            datalistSiswa.appendChild(fragment);
         }
 
         function syncSelectedSiswa() {
@@ -481,12 +518,7 @@
 
             if (!kelas || !inputValue) return;
 
-            const filtered = listSiswa.filter(s => String(s.kelas).toUpperCase() === String(kelas).toUpperCase());
-            const matched = filtered.find(s => `${s.nama_siswa} (${s.nisn})` === inputValue);
-
-            if (matched) {
-                selectedSiswaId = matched.id_siswa;
-            }
+            selectedSiswaId = siswaLabelToId[inputValue] ?? null;
         }
 
         function filterKejadianByKategori() {
@@ -495,9 +527,15 @@
             selectPoin.innerHTML = "";
 
             if (masterPoin[kat]) {
+                const fragment = document.createDocumentFragment();
                 masterPoin[kat].forEach(m => {
-                    selectPoin.innerHTML += `<option value="${m.id_poin}" data-bobot="${m.bobot_poin}">${m.nama_kejadian} (+/- ${m.bobot_poin} poin)</option>`;
+                    const option = document.createElement("option");
+                    option.value = m.id_poin;
+                    option.dataset.bobot = m.bobot_poin;
+                    option.textContent = `${m.nama_kejadian} (+/- ${m.bobot_poin} poin)`;
+                    fragment.appendChild(option);
                 });
+                selectPoin.appendChild(fragment);
             }
             updateBobotPoin();
         }
@@ -521,8 +559,8 @@
                     throw new Error("Nama murid harus dipilih dari daftar yang muncul, bukan diketik bebas.");
                 }
 
-                const sId = parseInt(selectedSiswaId);
-                const objSiswa = listSiswa.find(s => parseInt(s.id_siswa) === sId);
+                const sId = parseInt(selectedSiswaId, 10);
+                const objSiswa = listSiswa.find(s => parseInt(s.id_siswa, 10) === sId);
                 const kat = document.getElementById("inputKategori").value;
                 const masterOpt = document.getElementById("inputMasterPoin");
                 const kejadianText = masterOpt.options[masterOpt.selectedIndex].text.split(' (+/-')[0];
@@ -534,7 +572,7 @@
                     kelas: objSiswa.kelas,
                     kategori: kat,
                     kejadian: kejadianText,
-                    bobot: parseInt(document.getElementById("inputBobot").value),
+                    bobot: parseInt(document.getElementById("inputBobot").value, 10),
                     keterangan: document.getElementById("inputKeterangan").value,
                     guru: activeUserGuru
                 };
@@ -609,81 +647,183 @@
             tbody.innerHTML = "";
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-slate-400">Tidak ada data transaksi poin.</td></tr>`;
+                const emptyRow = document.createElement("tr");
+                const emptyCell = document.createElement("td");
+                emptyCell.colSpan = 8;
+                emptyCell.className = "text-center py-6 text-slate-400";
+                emptyCell.textContent = "Tidak ada data transaksi poin.";
+                emptyRow.appendChild(emptyCell);
+                tbody.appendChild(emptyRow);
                 return;
             }
 
+            const fragment = document.createDocumentFragment();
             filtered.forEach(t => {
-                const badgeKat = t.kategori === "Pelanggaran" 
-                    ? `<span class="bg-rose-100 text-rose-700 px-2.5 py-1 rounded-full text-xs font-semibold">Pelanggaran</span>`
-                    : `<span class="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-semibold">Prestasi</span>`;
+                const row = document.createElement("tr");
+                row.className = "hover:bg-slate-50";
 
-                tbody.innerHTML += `
-                    <tr class="hover:bg-slate-50">
-                        <td class="p-3 text-xs">${t.tanggal}</td>
-                        <td class="p-3 font-semibold">${t.nama_siswa}</td>
-                        <td class="p-3">Kelas ${t.kelas}</td>
-                        <td class="p-3">${badgeKat}</td>
-                        <td class="p-3">${t.kejadian} <br><span class="text-xs text-slate-400">${t.keterangan || '-'}</span></td>
-                        <td class="p-3 font-bold ${t.kategori === 'Pelanggaran' ? 'text-rose-600' : 'text-emerald-600'}">${t.kategori === 'Pelanggaran' ? '-' : '+'}${t.bobot}</td>
-                        <td class="p-3 text-xs text-slate-500">${t.guru}</td>
-                        <td class="p-3 text-center">
-                            <button onclick="openModalDelete('${t.id}')" class="text-rose-500 hover:text-rose-700 text-sm p-1" title="Hapus"><i class="fa-solid fa-trash-can"></i></button>
-                        </td>
-                    </tr>
-                `;
+                const dateCell = document.createElement("td");
+                dateCell.className = "p-3 text-xs";
+                dateCell.textContent = t.tanggal;
+                row.appendChild(dateCell);
+
+                const nameCell = document.createElement("td");
+                nameCell.className = "p-3 font-semibold";
+                nameCell.textContent = t.nama_siswa;
+                row.appendChild(nameCell);
+
+                const classCell = document.createElement("td");
+                classCell.className = "p-3";
+                classCell.textContent = `Kelas ${t.kelas}`;
+                row.appendChild(classCell);
+
+                const categoryCell = document.createElement("td");
+                categoryCell.className = "p-3";
+                const badge = document.createElement("span");
+                badge.className = t.kategori === "Pelanggaran"
+                    ? "bg-rose-100 text-rose-700 px-2.5 py-1 rounded-full text-xs font-semibold"
+                    : "bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-semibold";
+                badge.textContent = t.kategori;
+                categoryCell.appendChild(badge);
+                row.appendChild(categoryCell);
+
+                const kejadianCell = document.createElement("td");
+                kejadianCell.className = "p-3";
+                const kejadianText = document.createElement("div");
+                kejadianText.textContent = t.kejadian;
+                const catatanText = document.createElement("span");
+                catatanText.className = "text-xs text-slate-400";
+                catatanText.textContent = t.keterangan || "-";
+                kejadianCell.append(kejadianText, document.createElement("br"), catatanText);
+                row.appendChild(kejadianCell);
+
+                const pointCell = document.createElement("td");
+                pointCell.className = `p-3 font-bold ${t.kategori === 'Pelanggaran' ? 'text-rose-600' : 'text-emerald-600'}`;
+                pointCell.textContent = `${t.kategori === 'Pelanggaran' ? '-' : '+'}${t.bobot}`;
+                row.appendChild(pointCell);
+
+                const guruCell = document.createElement("td");
+                guruCell.className = "p-3 text-xs text-slate-500";
+                guruCell.textContent = t.guru;
+                row.appendChild(guruCell);
+
+                const aksiCell = document.createElement("td");
+                aksiCell.className = "p-3 text-center";
+                const deleteBtn = document.createElement("button");
+                deleteBtn.type = "button";
+                deleteBtn.className = "text-rose-500 hover:text-rose-700 text-sm p-1";
+                deleteBtn.title = "Hapus";
+                deleteBtn.setAttribute("aria-label", `Hapus catatan ${t.nama_siswa}`);
+                deleteBtn.onclick = () => openModalDelete(t.id);
+                const deleteIcon = document.createElement("i");
+                deleteIcon.className = "fa-solid fa-trash-can";
+                deleteBtn.appendChild(deleteIcon);
+                aksiCell.appendChild(deleteBtn);
+                row.appendChild(aksiCell);
+
+                fragment.appendChild(row);
             });
+
+            tbody.appendChild(fragment);
         }
 
         function renderTableRekap() {
             const tbody = document.getElementById("tbodyRekap");
             tbody.innerHTML = "";
 
+            const fragment = document.createDocumentFragment();
             listSiswa.forEach(s => {
-                const trxs = stateTransactions.filter(t => parseInt(t.id_siswa) === parseInt(s.id_siswa));
+                const trxs = stateTransactions.filter(t => parseInt(t.id_siswa, 10) === parseInt(s.id_siswa, 10));
                 let totalPelanggaran = 0;
                 let totalPrestasi = 0;
 
                 trxs.forEach(t => {
-                    if (t.kategori === "Pelanggaran") totalPelanggaran += parseInt(t.bobot);
-                    if (t.kategori === "Prestasi") totalPrestasi += parseInt(t.bobot);
+                    if (t.kategori === "Pelanggaran") totalPelanggaran += parseInt(t.bobot, 10);
+                    if (t.kategori === "Prestasi") totalPrestasi += parseInt(t.bobot, 10);
                 });
 
-                let badgeStatus = `<span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg text-xs font-semibold">Sangat Baik</span>`;
+                let badgeStatus = "Sangat Baik";
                 if (totalPelanggaran >= 50) {
-                    badgeStatus = `<span class="bg-rose-100 text-rose-700 px-2 py-1 rounded-lg text-xs font-semibold">Peringatan Berat (SP3)</span>`;
+                    badgeStatus = "Peringatan Berat (SP3)";
                 } else if (totalPelanggaran >= 20) {
-                    badgeStatus = `<span class="bg-amber-100 text-amber-700 px-2 py-1 rounded-lg text-xs font-semibold">Peringatan Sedang (SP1)</span>`;
+                    badgeStatus = "Peringatan Sedang (SP1)";
                 }
 
-                tbody.innerHTML += `
-                    <tr class="hover:bg-slate-50">
-                        <td class="p-3 font-mono text-xs text-slate-500">${s.nisn}</td>
-                        <td class="p-3 font-semibold text-slate-800">${s.nama_siswa}</td>
-                        <td class="p-3">Kelas ${s.kelas}</td>
-                        <td class="p-3 text-center font-bold text-rose-600">${totalPelanggaran}</td>
-                        <td class="p-3 text-center font-bold text-emerald-600">${totalPrestasi}</td>
-                        <td class="p-3 text-center">${badgeStatus}</td>
-                        <td class="p-3 text-center">
-                            <button onclick="openModalSurat(${s.id_siswa})" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1 mx-auto">
-                                <i class="fa-solid fa-print text-xs"></i> Cetak Surat
-                            </button>
-                        </td>
-                    </tr>
-                `;
+                const row = document.createElement("tr");
+                row.className = "hover:bg-slate-50";
+
+                const nisnCell = document.createElement("td");
+                nisnCell.className = "p-3 font-mono text-xs text-slate-500";
+                nisnCell.textContent = s.nisn;
+                row.appendChild(nisnCell);
+
+                const namaCell = document.createElement("td");
+                namaCell.className = "p-3 font-semibold text-slate-800";
+                namaCell.textContent = s.nama_siswa;
+                row.appendChild(namaCell);
+
+                const kelasCell = document.createElement("td");
+                kelasCell.className = "p-3";
+                kelasCell.textContent = `Kelas ${s.kelas}`;
+                row.appendChild(kelasCell);
+
+                const pelCell = document.createElement("td");
+                pelCell.className = "p-3 text-center font-bold text-rose-600";
+                pelCell.textContent = totalPelanggaran;
+                row.appendChild(pelCell);
+
+                const presCell = document.createElement("td");
+                presCell.className = "p-3 text-center font-bold text-emerald-600";
+                presCell.textContent = totalPrestasi;
+                row.appendChild(presCell);
+
+                const statusCell = document.createElement("td");
+                statusCell.className = "p-3 text-center";
+                const statusBadge = document.createElement("span");
+                statusBadge.className = totalPelanggaran >= 50
+                    ? "bg-rose-100 text-rose-700 px-2 py-1 rounded-lg text-xs font-semibold"
+                    : totalPelanggaran >= 20
+                        ? "bg-amber-100 text-amber-700 px-2 py-1 rounded-lg text-xs font-semibold"
+                        : "bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg text-xs font-semibold";
+                statusBadge.textContent = badgeStatus;
+                statusCell.appendChild(statusBadge);
+                row.appendChild(statusCell);
+
+                const aksiCell = document.createElement("td");
+                aksiCell.className = "p-3 text-center";
+                const printBtn = document.createElement("button");
+                printBtn.type = "button";
+                printBtn.className = "bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1 mx-auto";
+                printBtn.onclick = () => openModalSurat(s.id_siswa);
+                printBtn.setAttribute("aria-label", `Cetak surat untuk ${s.nama_siswa}`);
+                const printIcon = document.createElement("i");
+                printIcon.className = "fa-solid fa-print text-xs";
+                const printText = document.createTextNode(" Cetak Surat");
+                printBtn.append(printIcon, printText);
+                aksiCell.appendChild(printBtn);
+                row.appendChild(aksiCell);
+
+                fragment.appendChild(row);
             });
+
+            tbody.appendChild(fragment);
         }
 
         // --- HAPUS TRANSAKSI MODAL ---
         function openModalDelete(id) {
             deleteTargetId = id;
-            document.getElementById("modalConfirmDelete").classList.remove("hidden");
+            const modal = document.getElementById("modalConfirmDelete");
+            modal.classList.remove("hidden");
+            modal.setAttribute("aria-hidden", "false");
             document.getElementById("btnConfirmDelete").onclick = executeDelete;
+            document.getElementById("btnConfirmDelete").focus();
         }
 
         function closeModalDelete() {
             deleteTargetId = null;
-            document.getElementById("modalConfirmDelete").classList.add("hidden");
+            const modal = document.getElementById("modalConfirmDelete");
+            modal.classList.add("hidden");
+            modal.setAttribute("aria-hidden", "true");
         }
 
         async function executeDelete() {
@@ -707,21 +847,25 @@
 
         // --- SURAT TEGURAN MODAL ---
         function openModalSurat(siswaId) {
-            const s = listSiswa.find(x => parseInt(x.id_siswa) === parseInt(siswaId));
+            const s = listSiswa.find(x => parseInt(x.id_siswa, 10) === parseInt(siswaId, 10));
             activeSelectedSiswaSurat = s;
 
-            const trxs = stateTransactions.filter(t => parseInt(t.id_siswa) === parseInt(s.id_siswa) && t.kategori === "Pelanggaran");
-            const totalPoin = trxs.reduce((sum, item) => sum + parseInt(item.bobot), 0);
+            const trxs = stateTransactions.filter(t => parseInt(t.id_siswa, 10) === parseInt(s.id_siswa, 10) && t.kategori === "Pelanggaran");
+            const totalPoin = trxs.reduce((sum, item) => sum + parseInt(item.bobot, 10), 0);
 
             document.getElementById("suratNamaSiswa").innerText = s.nama_siswa;
             document.getElementById("suratKelasSiswa").innerText = `Kelas ${s.kelas}`;
             document.getElementById("suratPoinSiswa").innerText = `${totalPoin} Poin`;
 
-            document.getElementById("modalCetakSurat").classList.remove("hidden");
+            const modal = document.getElementById("modalCetakSurat");
+            modal.classList.remove("hidden");
+            modal.setAttribute("aria-hidden", "false");
         }
 
         function closeModalSurat() {
-            document.getElementById("modalCetakSurat").classList.add("hidden");
+            const modal = document.getElementById("modalCetakSurat");
+            modal.classList.add("hidden");
+            modal.setAttribute("aria-hidden", "true");
         }
 
         // --- EXPORT CLIENT-SIDE DIRECT DOWNLOAD (PDF & EXCEL) ---
@@ -789,9 +933,9 @@
             showLoading(true, "Menyiapkan Rekap Excel...");
             setTimeout(() => {
                 const dataRekap = listSiswa.map(s => {
-                    const trxs = stateTransactions.filter(t => parseInt(t.id_siswa) === parseInt(s.id_siswa));
-                    const pel = trxs.filter(t => t.kategori === "Pelanggaran").reduce((a,b) => a + parseInt(b.bobot), 0);
-                    const pres = trxs.filter(t => t.kategori === "Prestasi").reduce((a,b) => a + parseInt(b.bobot), 0);
+                    const trxs = stateTransactions.filter(t => parseInt(t.id_siswa, 10) === parseInt(s.id_siswa, 10));
+                    const pel = trxs.filter(t => t.kategori === "Pelanggaran").reduce((a,b) => a + parseInt(b.bobot, 10), 0);
+                    const pres = trxs.filter(t => t.kategori === "Prestasi").reduce((a,b) => a + parseInt(b.bobot, 10), 0);
                     return {
                         "NISN": s.nisn,
                         "Nama Siswa": s.nama_siswa,
@@ -820,8 +964,8 @@
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF();
                 const s = activeSelectedSiswaSurat;
-                const trxs = stateTransactions.filter(t => parseInt(t.id_siswa) === parseInt(s.id_siswa) && t.kategori === "Pelanggaran");
-                const totalPoin = trxs.reduce((a,b) => a + parseInt(b.bobot), 0);
+                const trxs = stateTransactions.filter(t => parseInt(t.id_siswa, 10) === parseInt(s.id_siswa, 10) && t.kategori === "Pelanggaran");
+                const totalPoin = trxs.reduce((a,b) => a + parseInt(b.bobot, 10), 0);
 
                 // KOP SURAT
                 doc.setFontSize(14);
