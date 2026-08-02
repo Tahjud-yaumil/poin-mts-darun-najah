@@ -34,8 +34,11 @@
     <!-- SCREEN 1: LOGIN GURU (AUTH GUARD) -->
     <div id="loginScreen" class="fixed inset-0 bg-emerald-900 flex items-center justify-center p-4 z-[500]">
         <div class="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md text-center">
-            <div class="w-20 h-20 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl font-bold">
-                <i class="fa-solid fa-graduation-cap"></i>
+            <div class="w-24 h-24 bg-white rounded-2xl border border-emerald-100 shadow-sm flex items-center justify-center mx-auto mb-4 p-2 overflow-hidden">
+                <img id="schoolLogoLogin" src="school-logo.png" alt="Logo MTs Darun Najah Gading" class="w-full h-full object-contain" onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden');">
+                <div class="hidden w-full h-full bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center text-3xl font-bold">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
             </div>
             <h1 class="text-2xl font-bold text-slate-800 mb-1">MTs Darun Najah Gading</h1>
             <p class="text-slate-500 text-sm mb-6">Sistem Pencatatan Poin Pelanggaran & Prestasi</p>
@@ -60,7 +63,10 @@
         <header class="bg-emerald-700 text-white sticky top-0 z-10 shadow-md">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                 <div class="flex items-center space-x-3">
-                    <i class="fa-solid fa-book-bookmark text-2xl text-emerald-200"></i>
+                    <div class="w-10 h-10 bg-white/10 rounded-xl overflow-hidden flex items-center justify-center p-1.5 shadow-sm">
+                        <img id="schoolLogoNav" src="school-logo.png" alt="Logo MTs Darun Najah Gading" class="w-full h-full object-contain" onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden');">
+                        <i class="fa-solid fa-book-bookmark text-2xl text-emerald-200 hidden"></i>
+                    </div>
                     <div>
                         <h2 class="font-bold text-base leading-tight">Poin Murid MTs Darun Najah</h2>
                         <p class="text-xs text-emerald-200">Gading - Jatirejo - Mojokerto</p>
@@ -157,8 +163,12 @@
                                     </div>
                                     <div>
                                         <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Nama Murid</label>
-                                        <input type="text" id="inputSiswa" list="datalistSiswa" required disabled autocomplete="off" placeholder="Ketik nama murid lalu pilih dari daftar" class="w-full px-3 py-2 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-slate-50">
-                                        <datalist id="datalistSiswa"></datalist>
+                                        <div class="relative space-y-2">
+                                            <input type="text" id="inputSiswaSearch" disabled autocomplete="off" placeholder="Ketik untuk mencari murid..." class="w-full px-3 py-2 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-slate-50">
+                                            <input type="hidden" id="inputSiswaValue">
+                                            <div id="siswaSuggestions" class="student-dropdown absolute z-20 w-full bg-white border border-gray-200 rounded-lg mt-1 hidden shadow-lg max-h-60 overflow-y-auto"></div>
+                                        </div>
+                                        <p class="text-[11px] text-slate-400 mt-2">Pilih kelas dulu, lalu ketik nama murid untuk melihat saran.</p>
                                     </div>
                                 </div>
 
@@ -346,11 +356,27 @@
         let deleteTargetId = null;
         let activeSelectedSiswaSurat = null;
         let siswaLabelToId = {};
+        let currentSiswaOptions = [];
 
         // INIT APPLICATION
         document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("inputTanggal").valueAsDate = new Date();
-            document.getElementById("inputSiswa").addEventListener("input", syncSelectedSiswa);
+            const siswaSearch = document.getElementById("inputSiswaSearch");
+            const suggestionBox = document.getElementById("siswaSuggestions");
+            siswaSearch.addEventListener("input", showMuridDropdown);
+            siswaSearch.addEventListener("focus", showMuridDropdown);
+            suggestionBox.addEventListener("click", (event) => {
+                const button = event.target.closest("button[data-siswa-id]");
+                if (!button) return;
+                event.preventDefault();
+                selectMurid(button.dataset.siswaId);
+            });
+            document.addEventListener("click", (event) => {
+                const wrap = document.getElementById("inputSiswaSearch").parentElement;
+                if (!wrap.contains(event.target)) {
+                    suggestionBox.classList.add("hidden");
+                }
+            });
             document.addEventListener("keydown", (event) => {
                 if (event.key === "Escape") {
                     closeModalDelete();
@@ -483,42 +509,126 @@
         // --- FORM LOGIC ---
         function filterSiswaByKelas() {
             const k = document.getElementById("inputKelas").value;
-            const inputSiswa = document.getElementById("inputSiswa");
-            const datalistSiswa = document.getElementById("datalistSiswa");
+            const inputSiswa = document.getElementById("inputSiswaSearch");
+            const inputSiswaValue = document.getElementById("inputSiswaValue");
+            const suggestionBox = document.getElementById("siswaSuggestions");
             selectedSiswaId = null;
             inputSiswa.value = "";
+            inputSiswaValue.value = "";
             siswaLabelToId = {};
-            datalistSiswa.innerHTML = "";
+            currentSiswaOptions = [];
 
             if (!k) {
                 inputSiswa.disabled = true;
-                inputSiswa.placeholder = "Pilih kelas terlebih dahulu";
+                suggestionBox.classList.add("hidden");
+                suggestionBox.innerHTML = "";
                 return;
             }
 
             const filtered = listSiswa.filter(s => String(s.kelas).toUpperCase() === String(k).toUpperCase());
             inputSiswa.disabled = false;
-            inputSiswa.placeholder = "Ketik nama murid lalu pilih dari daftar";
-            const fragment = document.createDocumentFragment();
-            filtered.forEach(s => {
-                const label = `${s.nama_siswa} (${s.nisn})`;
-                siswaLabelToId[label] = s.id_siswa;
-                const option = document.createElement("option");
-                option.value = label;
-                option.dataset.idSiswa = s.id_siswa;
-                fragment.appendChild(option);
-            });
-            datalistSiswa.appendChild(fragment);
+            currentSiswaOptions = filtered.map(s => ({
+                id: s.id_siswa,
+                label: s.nama_siswa,
+                nama: s.nama_siswa,
+                nisn: s.nisn
+            }));
+            showMuridDropdown();
         }
 
         function syncSelectedSiswa() {
-            const kelas = document.getElementById("inputKelas").value;
-            const inputValue = document.getElementById("inputSiswa").value.trim();
+            const inputSiswa = document.getElementById("inputSiswaSearch");
+            const inputSiswaValue = document.getElementById("inputSiswaValue");
+            const query = inputSiswa.value.trim().toLowerCase();
+
+            if (!query) {
+                selectedSiswaId = null;
+                inputSiswaValue.value = "";
+                showMuridDropdown();
+                return;
+            }
+
+            const matched = currentSiswaOptions.find(s => s.label.toLowerCase() === query || s.nama.toLowerCase() === query || s.nisn.toLowerCase() === query);
+            if (matched) {
+                selectedSiswaId = matched.id;
+                inputSiswa.value = matched.label;
+                inputSiswaValue.value = matched.id;
+                renderSiswaDropdown([matched]);
+                return;
+            }
+
             selectedSiswaId = null;
+            inputSiswaValue.value = "";
+            renderSiswaDropdown(currentSiswaOptions.filter(s =>
+                s.label.toLowerCase().includes(query) ||
+                s.nama.toLowerCase().includes(query) ||
+                s.nisn.toLowerCase().includes(query)
+            ));
+        }
 
-            if (!kelas || !inputValue) return;
+        function showMuridDropdown() {
+            const inputSiswa = document.getElementById("inputSiswaSearch");
+            const kelas = document.getElementById("inputKelas").value;
+            if (!kelas) {
+                renderSiswaDropdown([], "Pilih kelas terlebih dahulu");
+                return;
+            }
 
-            selectedSiswaId = siswaLabelToId[inputValue] ?? null;
+            const query = inputSiswa.value.trim().toLowerCase();
+            if (!query) {
+                renderSiswaDropdown(currentSiswaOptions);
+                return;
+            }
+
+            const filtered = currentSiswaOptions.filter(s =>
+                s.label.toLowerCase().includes(query) ||
+                s.nama.toLowerCase().includes(query) ||
+                s.nisn.toLowerCase().includes(query)
+            );
+            renderSiswaDropdown(filtered);
+        }
+
+        function renderSiswaDropdown(list = currentSiswaOptions, emptyMessage = "") {
+            const suggestionBox = document.getElementById("siswaSuggestions");
+            suggestionBox.innerHTML = "";
+
+            if (!list.length) {
+                const empty = document.createElement("div");
+                empty.className = "px-3 py-2 text-sm text-slate-400";
+                empty.textContent = emptyMessage || "Tidak ada murid yang cocok.";
+                suggestionBox.appendChild(empty);
+                suggestionBox.classList.remove("hidden");
+                return;
+            }
+
+            list.forEach(s => {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.dataset.siswaId = s.id;
+                button.className = "w-full text-left px-3 py-2 hover:bg-emerald-50 border-b border-slate-100 last:border-b-0";
+
+                const name = document.createElement("div");
+                name.className = "font-medium text-slate-800";
+                name.textContent = s.nama;
+
+                button.appendChild(name);
+                suggestionBox.appendChild(button);
+            });
+            suggestionBox.classList.remove("hidden");
+        }
+
+        function selectMurid(siswaId) {
+            const inputSiswa = document.getElementById("inputSiswaSearch");
+            const inputSiswaValue = document.getElementById("inputSiswaValue");
+            const suggestionBox = document.getElementById("siswaSuggestions");
+            const matched = currentSiswaOptions.find(s => String(s.id) === String(siswaId));
+            if (!matched) return;
+
+            selectedSiswaId = matched.id;
+            inputSiswa.value = matched.label;
+            inputSiswaValue.value = matched.id;
+            suggestionBox.classList.add("hidden");
+            suggestionBox.innerHTML = "";
         }
 
         function filterKejadianByKategori() {
