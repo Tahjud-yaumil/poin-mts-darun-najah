@@ -343,7 +343,7 @@
          Ganti URL di bawah dengan URL Web App Anda setelah deploy.
          ============================================================
         */
-        const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzJGPQ9n9wbhlCR3BD9BuekxHXYQE-fMoogjDd7Oiyve6KfiIDTLNbgnd8ZVpSRYHtP/exec";
+        const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxP-cI1DmiwR3PHP6XJtqW1Y6nhU-u68RPWtyqxjUrlyVviVMggENht5KpSkYYpTiZc/exec";
 
         // GLOBAL APP STATES
         let listGuru = [];
@@ -420,12 +420,23 @@
                 throw new Error("Apps Script URL is placeholder");
             }
 
-            const bodyData = JSON.stringify({ action, ...payload });
-            const response = await fetch(APP_SCRIPT_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json;charset=utf-8" },
-                body: bodyData
-            });
+            let response;
+            if (action === "get_initial_data") {
+                response = await fetch(`${APP_SCRIPT_URL}?action=${encodeURIComponent(action)}`, {
+                    method: "GET"
+                });
+            } else {
+                const formData = new URLSearchParams();
+                formData.append("action", action);
+                Object.keys(payload).forEach((key) => {
+                    formData.append(key, payload[key]);
+                });
+
+                response = await fetch(APP_SCRIPT_URL, {
+                    method: "POST",
+                    body: formData
+                });
+            }
 
             if (!response.ok) {
                 const errorText = await response.text().catch(() => "");
