@@ -157,9 +157,8 @@
                                     </div>
                                     <div>
                                         <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Nama Murid</label>
-                                        <select id="inputSiswa" required disabled class="w-full px-3 py-2 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-slate-50">
-                                            <option value="">-- Pilih Kelas Terlebih Dahulu --</option>
-                                        </select>
+                                        <input type="text" id="inputSiswa" list="datalistSiswa" required disabled autocomplete="off" placeholder="Ketik nama murid lalu pilih dari daftar" class="w-full px-3 py-2 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-slate-50">
+                                        <datalist id="datalistSiswa"></datalist>
                                     </div>
                                 </div>
 
@@ -341,6 +340,7 @@
         let listSiswa = [];
         let masterPoin = { Pelanggaran: [], Prestasi: [] };
         let stateTransactions = [];
+        let selectedSiswaId = null;
 
         let activeUserGuru = "";
         let deleteTargetId = null;
@@ -454,21 +454,39 @@
         // --- FORM LOGIC ---
         function filterSiswaByKelas() {
             const k = document.getElementById("inputKelas").value;
-            const selectSiswa = document.getElementById("inputSiswa");
-            selectSiswa.innerHTML = "";
+            const inputSiswa = document.getElementById("inputSiswa");
+            const datalistSiswa = document.getElementById("datalistSiswa");
+            selectedSiswaId = null;
+            inputSiswa.value = "";
+            datalistSiswa.innerHTML = "";
 
             if (!k) {
-                selectSiswa.disabled = true;
-                selectSiswa.innerHTML = '<option value="">-- Pilih Kelas Terlebih Dahulu --</option>';
+                inputSiswa.disabled = true;
+                inputSiswa.placeholder = "Pilih kelas terlebih dahulu";
                 return;
             }
 
             const filtered = listSiswa.filter(s => String(s.kelas).toUpperCase() === String(k).toUpperCase());
-            selectSiswa.disabled = false;
-            selectSiswa.innerHTML = '<option value="">-- Pilih Nama Murid --</option>';
+            inputSiswa.disabled = false;
+            inputSiswa.placeholder = "Ketik nama murid lalu pilih dari daftar";
             filtered.forEach(s => {
-                selectSiswa.innerHTML += `<option value="${s.id_siswa}">${s.nama_siswa} (${s.nisn})</option>`;
+                datalistSiswa.innerHTML += `<option value="${s.nama_siswa} (${s.nisn})" data-id-siswa="${s.id_siswa}"></option>`;
             });
+        }
+
+        function syncSelectedSiswa() {
+            const kelas = document.getElementById("inputKelas").value;
+            const inputValue = document.getElementById("inputSiswa").value.trim();
+            selectedSiswaId = null;
+
+            if (!kelas || !inputValue) return;
+
+            const filtered = listSiswa.filter(s => String(s.kelas).toUpperCase() === String(kelas).toUpperCase());
+            const matched = filtered.find(s => `${s.nama_siswa} (${s.nisn})` === inputValue);
+
+            if (matched) {
+                selectedSiswaId = matched.id_siswa;
+            }
         }
 
         function filterKejadianByKategori() {
@@ -497,7 +515,13 @@
             showLoading(true, "Menyimpan ke Google Sheets...");
 
             try {
-                const sId = parseInt(document.getElementById("inputSiswa").value);
+                syncSelectedSiswa();
+
+                if (!selectedSiswaId) {
+                    throw new Error("Nama murid harus dipilih dari daftar yang muncul, bukan diketik bebas.");
+                }
+
+                const sId = parseInt(selectedSiswaId);
                 const objSiswa = listSiswa.find(s => parseInt(s.id_siswa) === sId);
                 const kat = document.getElementById("inputKategori").value;
                 const masterOpt = document.getElementById("inputMasterPoin");
