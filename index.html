@@ -428,12 +428,17 @@
             });
 
             if (!response.ok) {
-                throw new Error(`Network error: ${response.status}`);
+                const errorText = await response.text().catch(() => "");
+                throw new Error(`Network error: ${response.status}${errorText ? ` - ${errorText}` : ""}`);
             }
 
-            const result = await response.json().catch(() => {
-                throw new Error("Invalid JSON from server");
-            });
+            const rawText = await response.text();
+            let result;
+            try {
+                result = JSON.parse(rawText);
+            } catch {
+                throw new Error(rawText || "Invalid JSON from server");
+            }
 
             if (!result.success) {
                 throw new Error(result.message || "Terjadi kesalahan di server backend.");
@@ -459,7 +464,11 @@
                 showLoading(false);
             } catch (err) {
                 showLoading(false);
-                showToast("Gagal memuat data: " + err.message, "error");
+                const message = err.message || "Terjadi kesalahan yang tidak diketahui.";
+                const getDataRangeHint = /getDataRange|null/i.test(message)
+                    ? "Backend Apps Script gagal membaca sheet. Cek nama tab sheet, Spreadsheet ID, dan pastikan sheet yang dipanggil memang ada."
+                    : "";
+                showToast(`Gagal memuat data: ${message}${getDataRangeHint ? ` | ${getDataRangeHint}` : ""}`, "error");
             }
         }
 
