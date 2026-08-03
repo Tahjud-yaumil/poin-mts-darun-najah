@@ -42,9 +42,20 @@ function doPost(e) {
 
 function parseRequestPayload(e) {
   if (e && e.parameter) {
+    var normalized = {};
     var keys = Object.keys(e.parameter);
+
+    keys.forEach(function(key) {
+      var value = e.parameter[key];
+      if (Array.isArray(value)) {
+        normalized[key] = value.length > 1 ? value : value[0];
+      } else {
+        normalized[key] = value;
+      }
+    });
+
     if (keys.length > 0) {
-      return e.parameter;
+      return normalized;
     }
   }
 
@@ -52,6 +63,18 @@ function parseRequestPayload(e) {
     try {
       return JSON.parse(e.postData.contents);
     } catch (err) {
+      var contents = e.postData.contents;
+      if (typeof contents === 'string' && contents.indexOf('=') !== -1) {
+        var formParams = {};
+        contents.split('&').forEach(function(part) {
+          if (!part) return;
+          var pair = part.split('=');
+          var key = decodeURIComponent(pair[0]);
+          var value = pair.length > 1 ? decodeURIComponent(pair.slice(1).join('=')) : '';
+          formParams[key] = value;
+        });
+        return formParams;
+      }
       return {};
     }
   }
