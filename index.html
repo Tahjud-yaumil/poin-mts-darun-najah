@@ -358,13 +358,29 @@
         let siswaLabelToId = {};
         let currentSiswaOptions = [];
 
+        function toLowerSafe(value) {
+            return String(value ?? "").toLowerCase();
+        }
+
         // INIT APPLICATION
         document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("inputTanggal").valueAsDate = new Date();
             const siswaSearch = document.getElementById("inputSiswaSearch");
             const suggestionBox = document.getElementById("siswaSuggestions");
-            siswaSearch.addEventListener("input", showMuridDropdown);
+            siswaSearch.addEventListener("input", () => {
+                showMuridDropdown();
+                syncSelectedSiswa();
+            });
             siswaSearch.addEventListener("focus", showMuridDropdown);
+            siswaSearch.addEventListener("keydown", (event) => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    syncSelectedSiswa();
+                    if (selectedSiswaId) {
+                        suggestionBox.classList.add("hidden");
+                    }
+                }
+            });
             suggestionBox.addEventListener("click", (event) => {
                 const button = event.target.closest("button[data-siswa-id]");
                 if (!button) return;
@@ -551,7 +567,7 @@
                 id: s.id_siswa,
                 label: s.nama_siswa,
                 nama: s.nama_siswa,
-                nisn: s.nisn
+                nisn: String(s.nisn ?? "")
             }));
             showMuridDropdown();
         }
@@ -559,7 +575,7 @@
         function syncSelectedSiswa() {
             const inputSiswa = document.getElementById("inputSiswaSearch");
             const inputSiswaValue = document.getElementById("inputSiswaValue");
-            const query = inputSiswa.value.trim().toLowerCase();
+            const query = toLowerSafe(inputSiswa.value.trim());
 
             if (!query) {
                 selectedSiswaId = null;
@@ -568,8 +584,29 @@
                 return;
             }
 
-            const matched = currentSiswaOptions.find(s => s.label.toLowerCase() === query || s.nama.toLowerCase() === query || s.nisn.toLowerCase() === query);
-            if (matched) {
+            const exactMatches = currentSiswaOptions.filter(s =>
+                toLowerSafe(s.label) === query ||
+                toLowerSafe(s.nama) === query ||
+                toLowerSafe(s.nisn) === query
+            );
+
+            if (exactMatches.length > 0) {
+                const matched = exactMatches[0];
+                selectedSiswaId = matched.id;
+                inputSiswa.value = matched.label;
+                inputSiswaValue.value = matched.id;
+                renderSiswaDropdown([matched]);
+                return;
+            }
+
+            const partialMatches = currentSiswaOptions.filter(s =>
+                toLowerSafe(s.label).includes(query) ||
+                toLowerSafe(s.nama).includes(query) ||
+                toLowerSafe(s.nisn).includes(query)
+            );
+
+            if (partialMatches.length === 1) {
+                const matched = partialMatches[0];
                 selectedSiswaId = matched.id;
                 inputSiswa.value = matched.label;
                 inputSiswaValue.value = matched.id;
@@ -579,11 +616,7 @@
 
             selectedSiswaId = null;
             inputSiswaValue.value = "";
-            renderSiswaDropdown(currentSiswaOptions.filter(s =>
-                s.label.toLowerCase().includes(query) ||
-                s.nama.toLowerCase().includes(query) ||
-                s.nisn.toLowerCase().includes(query)
-            ));
+            renderSiswaDropdown(partialMatches);
         }
 
         function showMuridDropdown() {
@@ -594,16 +627,16 @@
                 return;
             }
 
-            const query = inputSiswa.value.trim().toLowerCase();
+            const query = toLowerSafe(inputSiswa.value.trim());
             if (!query) {
                 renderSiswaDropdown(currentSiswaOptions);
                 return;
             }
 
             const filtered = currentSiswaOptions.filter(s =>
-                s.label.toLowerCase().includes(query) ||
-                s.nama.toLowerCase().includes(query) ||
-                s.nisn.toLowerCase().includes(query)
+                toLowerSafe(s.label).includes(query) ||
+                toLowerSafe(s.nama).includes(query) ||
+                toLowerSafe(s.nisn).includes(query)
             );
             renderSiswaDropdown(filtered);
         }
@@ -631,7 +664,11 @@
                 name.className = "font-medium text-slate-800";
                 name.textContent = s.nama;
 
-                button.appendChild(name);
+                const meta = document.createElement("div");
+                meta.className = "text-xs text-slate-500 mt-0.5";
+                meta.textContent = `NISN: ${s.nisn}`;
+
+                button.append(name, meta);
                 suggestionBox.appendChild(button);
             });
             suggestionBox.classList.remove("hidden");
