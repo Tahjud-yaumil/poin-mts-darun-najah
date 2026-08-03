@@ -304,7 +304,14 @@ function getInitialData() {
   var ss = getSpreadsheet_();
 
   var dataGuru = sheetToObjects(requireSheet_(ss, "Guru"));
-  var dataSiswa = sheetToObjects(requireSheet_(ss, "Siswa"));
+  var dataSiswa = sheetToObjects(requireSheet_(ss, "Siswa")).map(function(s) {
+    return {
+      id_siswa: s.id_siswa,
+      nisn: String(s.nisn || ""),
+      nama_siswa: String(s.nama_siswa || ""),
+      kelas: String(s.kelas || "")
+    };
+  });
 
   var rawPoin = sheetToObjects(requireSheet_(ss, "Master_Poin"));
   var masterPoin = { Pelanggaran: [], Prestasi: [] };

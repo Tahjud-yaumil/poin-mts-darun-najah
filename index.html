@@ -477,10 +477,27 @@
             showLoading(true, "Memuat master poin & data sistem dari Google Sheets...");
             try {
                 const data = await fetchGAS("get_initial_data");
-                listGuru = data.guru || [];
-                listSiswa = data.siswa || [];
+                listGuru = (data.guru || []).map(g => ({
+                    ...g,
+                    nama_guru: String(g.nama_guru ?? "")
+                }));
+                listSiswa = (data.siswa || []).map(s => ({
+                    ...s,
+                    id_siswa: parseInt(s.id_siswa, 10),
+                    nisn: String(s.nisn ?? ""),
+                    nama_siswa: String(s.nama_siswa ?? ""),
+                    kelas: String(s.kelas ?? "")
+                }));
                 masterPoin = data.masterPoin || { Pelanggaran: [], Prestasi: [] };
-                stateTransactions = data.transaksi || [];
+                stateTransactions = (data.transaksi || []).map(t => ({
+                    ...t,
+                    nama_siswa: String(t.nama_siswa ?? ""),
+                    kelas: String(t.kelas ?? ""),
+                    kategori: String(t.kategori ?? ""),
+                    kejadian: String(t.kejadian ?? ""),
+                    keterangan: String(t.keterangan ?? ""),
+                    guru: String(t.guru ?? "")
+                }));
 
                 initLoginDropdown();
                 filterKejadianByKategori();
